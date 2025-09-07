@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ai-chatbot
+    env: node
+    plan: free
+    buildCommand: chmod +x render-build.sh && ./render-build.sh
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Add your environment variables in Render dashboard
+      # DO NOT put sensitive values here - use Render's environment variables
+      - key: FRONTEND_URL
+        sync: false  # Set in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false  # Set in Render dashboard
+      - key: FIREBASE_PROJECT_ID
+        sync: false  # Set in Render dashboard
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false  # Set in Render dashboard
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false  # Set in Render dashboard
+      - key: EMAIL_USER
+        sync: false  # Set in Render dashboard
+      - key: EMAIL_PASS
+        sync: false  # Set in Render dashboard
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false  # Set in Render dashboard
+      - key: SLACK_BOT_TOKEN
+        sync: false  # Set in Render dashboard

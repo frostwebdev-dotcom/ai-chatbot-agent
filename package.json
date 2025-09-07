@@ -1,0 +1,35 @@
+{
+  "name": "ai-chatbot-voice",
+  "version": "2.0.0",
+  "description": "AI-powered chatbot with voice messaging, sentiment analysis, and multilingual support",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "chatbot",
+    "ai",
+    "openai",
+    "firebase",
+    "react",
+    "nodejs",
+    "voice-messages",
+    "speech-recognition",
+    "sentiment-analysis",
+    "multilingual"
+  ],
+  "author": "AI Chatbot Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
