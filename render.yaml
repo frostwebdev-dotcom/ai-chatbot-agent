@@ -1,9 +1,20 @@
 services:
   - type: web
-    name: ai-chatbot
+    name: ai-chatbot-fullstack
     env: node
     plan: free
-    buildCommand: chmod +x render-build.sh && ./render-build.sh
+    buildCommand: |
+      echo "🚀 Building AI Chatbot..."
+      echo "📦 Installing backend dependencies..."
+      cd backend && npm install --production
+      echo "📦 Installing frontend dependencies..."
+      cd ../frontend && npm install
+      echo "🏗️ Building frontend..."
+      npm run build
+      echo "📁 Copying frontend to backend..."
+      mkdir -p ../backend/public
+      cp -r dist/* ../backend/public/
+      echo "✅ Build complete!"
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV

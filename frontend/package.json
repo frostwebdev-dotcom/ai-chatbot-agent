@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev-simple": "python -m http.server 3000"
+    "dev-simple": "python -m http.server 3000",
+    "prebuild": "npm install"
   },
   "dependencies": {
     "react": "18.2.0",
