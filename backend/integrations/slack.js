@@ -1,47 +1,75 @@
 const express = require('express');
-const { WebClient } = require('@slack/web-api');
-const { createEventAdapter } = require('@slack/events-api');
 const { handleChatMessage } = require('../services/chatService');
 const { sanitizeInput } = require('../utils/helpers');
 
 const router = express.Router();
 
-// Initialize Slack Web API client
-const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+// Check if Slack credentials are available
+const isSlackEnabled = !!(process.env.SLACK_BOT_TOKEN && process.env.SLACK_SIGNING_SECRET);
 
-// Initialize Slack Events API adapter
-const slackEvents = createEventAdapter(process.env.SLACK_SIGNING_SECRET);
+let slack = null;
+let slackEvents = null;
 
-// Slack event handlers
-slackEvents.on('message', async (event) => {
+if (isSlackEnabled) {
   try {
-    // Ignore bot messages and messages in threads (for now)
-    if (event.bot_id || event.thread_ts) {
-      return;
-    }
+    const { WebClient } = require('@slack/web-api');
+    const { createEventAdapter } = require('@slack/events-api');
 
-    // Ignore messages from our own bot
-    if (event.user === process.env.SLACK_BOT_USER_ID) {
-      return;
-    }
+    // Initialize Slack Web API client
+    slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
-    await handleSlackMessage(event);
+    // Initialize Slack Events API adapter
+    slackEvents = createEventAdapter(process.env.SLACK_SIGNING_SECRET);
+
+    console.log('✅ Slack integration enabled');
   } catch (error) {
-    console.error('Error handling Slack message:', error);
+    console.error('❌ Slack integration failed to initialize:', error.message);
+    console.log('⚠️ Slack features will be disabled');
   }
-});
+} else {
+  console.log('⚠️ Slack integration disabled - missing credentials');
+  console.log('💡 Set SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET to enable Slack features');
+}
 
-// Slack app mentions
-slackEvents.on('app_mention', async (event) => {
-  try {
-    await handleSlackMessage(event, true);
-  } catch (error) {
-    console.error('Error handling Slack mention:', error);
-  }
-});
+// Slack event handlers (only if Slack is enabled)
+if (slackEvents) {
+  slackEvents.on('message', async (event) => {
+    try {
+      // Ignore bot messages and messages in threads (for now)
+      if (event.bot_id || event.thread_ts) {
+        return;
+      }
+
+      // Ignore messages from our own bot
+      if (event.user === process.env.SLACK_BOT_USER_ID) {
+        return;
+      }
+
+      await handleSlackMessage(event);
+    } catch (error) {
+      console.error('Error handling Slack message:', error);
+    }
+  });
+
+  // Slack app mentions
+  slackEvents.on('app_mention', async (event) => {
+    try {
+      await handleSlackMessage(event, true);
+    } catch (error) {
+      console.error('Error handling Slack mention:', error);
+    }
+  });
+}
 
 // Slack slash commands
 router.post('/commands', async (req, res) => {
+  if (!isSlackEnabled) {
+    return res.status(503).json({
+      response_type: 'ephemeral',
+      text: 'Slack integration is not configured on this server.'
+    });
+  }
+
   try {
     const { command, text, user_id, channel_id, user_name } = req.body;
 
@@ -84,9 +112,13 @@ router.post('/commands', async (req, res) => {
 
 // Slack interactive components (buttons, menus, etc.)
 router.post('/interactive', async (req, res) => {
+  if (!isSlackEnabled) {
+    return res.status(503).send('Slack integration is not configured');
+  }
+
   try {
     const payload = JSON.parse(req.body.payload);
-    
+
     if (payload.type === 'block_actions') {
       await handleSlackInteraction(payload);
     }
@@ -193,8 +225,13 @@ async function handleSlackSlashCommand(text, userId, channelId, userName) {
 }
 
 async function sendSlackMessage(channel, text, options = {}) {
+  if (!isSlackEnabled || !slack) {
+    console.log('⚠️ Slack not enabled - message not sent:', text);
+    return;
+  }
+
   try {
-    const { sentiment, escalated, userName } = options;
+    const { sentiment, escalated } = options;
 
     // First, try to find the channel if it's a name
     let channelId = channel;
@@ -481,8 +518,14 @@ async function findTestChannel() {
   }
 }
 
-// Mount the events adapter
-router.use('/events', slackEvents.expressMiddleware());
+// Mount the events adapter (only if Slack is enabled)
+if (slackEvents) {
+  router.use('/events', slackEvents.expressMiddleware());
+} else {
+  router.use('/events', (req, res) => {
+    res.status(503).json({ error: 'Slack integration not configured' });
+  });
+}
 
 module.exports = {
   router,

@@ -4,8 +4,26 @@ const { sanitizeInput } = require('../utils/helpers');
 
 const router = express.Router();
 
+// Check if WhatsApp credentials are available
+const isWhatsAppEnabled = !!(
+  process.env.WHATSAPP_ACCESS_TOKEN &&
+  process.env.WHATSAPP_PHONE_NUMBER_ID &&
+  process.env.WHATSAPP_VERIFY_TOKEN
+);
+
+if (isWhatsAppEnabled) {
+  console.log('✅ WhatsApp integration enabled');
+} else {
+  console.log('⚠️ WhatsApp integration disabled - missing credentials');
+  console.log('💡 Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_VERIFY_TOKEN to enable WhatsApp features');
+}
+
 // WhatsApp webhook verification
 router.get('/webhook', (req, res) => {
+  if (!isWhatsAppEnabled) {
+    return res.status(503).send('WhatsApp integration not configured');
+  }
+
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
@@ -22,6 +40,10 @@ router.get('/webhook', (req, res) => {
 
 // WhatsApp message handler
 router.post('/webhook', async (req, res) => {
+  if (!isWhatsAppEnabled) {
+    return res.status(503).send('WhatsApp integration not configured');
+  }
+
   try {
     const body = req.body;
 
@@ -95,6 +117,11 @@ async function handleWhatsAppMessage(message, value) {
 }
 
 async function sendWhatsAppMessage(to, text) {
+  if (!isWhatsAppEnabled) {
+    console.log('⚠️ WhatsApp not enabled - message not sent:', text);
+    return;
+  }
+
   try {
     const url = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
     
