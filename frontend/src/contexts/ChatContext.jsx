@@ -65,6 +65,23 @@ export const ChatProvider = ({ children }) => {
         toast.error(error.message);
       });
 
+      // Handle admin responses from Slack escalation
+      newSocket.on('admin_response', (response) => {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          type: 'admin',
+          content: response.content,
+          adminName: response.adminName,
+          timestamp: response.timestamp,
+          isEscalation: true
+        }]);
+
+        // Show notification
+        toast.success(`🙋‍♂️ ${response.adminName} is helping you`, {
+          duration: 4000
+        });
+      });
+
       newSocket.on('connect_error', (error) => {
         console.error('Connection error:', error);
         toast.error('Failed to connect to chat server');

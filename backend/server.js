@@ -112,6 +112,11 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/whatsapp', whatsappIntegration.router);
 app.use('/api/slack', slackIntegration.router);
 
+// Set Socket.IO instance for Slack integration
+if (slackIntegration.setSocketIOInstance) {
+  slackIntegration.setSocketIOInstance(io);
+}
+
 // Serve frontend for all non-API routes (for production)
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');

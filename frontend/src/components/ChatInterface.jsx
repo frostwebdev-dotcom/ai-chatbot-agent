@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
-import { 
-  Send, 
-  Mic, 
-  MicOff, 
-  LogOut, 
-  Settings, 
+import {
+  Send,
+  Mic,
+  MicOff,
+  LogOut,
+  Settings,
   MessageCircle,
   Globe,
   Trash2,
-  Download
+  Download,
+  UserCheck
 } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import VoiceInput from './VoiceInput';
@@ -110,6 +111,24 @@ const ChatInterface = () => {
   const handleQuickReply = (reply) => {
     const text = language === 'es' ? reply.es : reply.text;
     sendMessage(text);
+  };
+
+  const handleEscalation = () => {
+    const escalationMessage = language === 'es'
+      ? 'Necesito hablar con un agente humano, por favor.'
+      : 'I need to speak with a human agent, please.';
+
+    sendMessage(escalationMessage);
+
+    // Show confirmation toast
+    const confirmationText = language === 'es'
+      ? '🚨 Escalando a agente humano...'
+      : '🚨 Escalating to human agent...';
+
+    toast.success(confirmationText, {
+      duration: 3000,
+      icon: '🙋‍♂️'
+    });
   };
 
   return (
@@ -268,6 +287,17 @@ const ChatInterface = () => {
               </div>
             </div>
           </div>
+
+          {/* Escalation Button */}
+          <button
+            type="button"
+            onClick={handleEscalation}
+            disabled={!isConnected}
+            className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white p-3 rounded-full transition-colors"
+            title={language === 'es' ? 'Hablar con agente humano' : 'Speak to human agent'}
+          >
+            <UserCheck className="w-5 h-5" />
+          </button>
 
           {/* Send Button */}
           <button

@@ -24,6 +24,10 @@
   .chat-bubble-bot {
     @apply bg-white text-gray-800 mr-auto rounded-bl-md shadow-sm border border-gray-200;
   }
+
+  .chat-bubble-admin {
+    @apply bg-orange-50 text-gray-800 mr-auto rounded-bl-md shadow-sm border border-orange-200;
+  }
   
   .typing-indicator {
     @apply flex space-x-1;

@@ -31,12 +31,160 @@ if (isSlackEnabled) {
   console.log('💡 Set SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET to enable Slack features');
 }
 
+// In-memory storage for escalation mappings (use Redis in production)
+const escalationMappings = new Map();
+
+// Store escalation mapping
+async function storeEscalationMapping(escalationId, userId, userChannel, slackThreadTs) {
+  escalationMappings.set(escalationId, {
+    userId,
+    userChannel,
+    slackThreadTs,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  });
+
+  // Also store by thread timestamp for quick lookup
+  escalationMappings.set(slackThreadTs, {
+    escalationId,
+    userId,
+    userChannel,
+    status: 'active'
+  });
+}
+
+// Get escalation by thread timestamp
+function getEscalationByThread(threadTs) {
+  return escalationMappings.get(threadTs);
+}
+
+// Handle admin responses in escalation threads
+async function handleEscalationResponse(event) {
+  try {
+    const escalation = getEscalationByThread(event.thread_ts);
+
+    if (!escalation || escalation.status !== 'active') {
+      console.log('No active escalation found for thread:', event.thread_ts);
+      return;
+    }
+
+    const adminMessage = event.text;
+    const adminUser = event.user;
+
+    // Get admin user info
+    let adminName = 'Support Agent';
+    try {
+      const userInfo = await slack.users.info({ user: adminUser });
+      adminName = userInfo.user.real_name || userInfo.user.name || 'Support Agent';
+    } catch (error) {
+      console.warn('Could not get admin user info:', error.message);
+    }
+
+    console.log(`Admin ${adminName} responding to escalation ${escalation.escalationId}: ${adminMessage}`);
+
+    // Send admin response to user via appropriate channel
+    await sendAdminResponseToUser(escalation, adminMessage, adminName);
+
+    // Add reaction to show message was forwarded
+    try {
+      await slack.reactions.add({
+        channel: event.channel,
+        timestamp: event.ts,
+        name: 'white_check_mark'
+      });
+    } catch (error) {
+      console.warn('Could not add reaction:', error.message);
+    }
+
+  } catch (error) {
+    console.error('Error handling escalation response:', error);
+  }
+}
+
+// Send admin response to user
+async function sendAdminResponseToUser(escalation, message, adminName) {
+  try {
+    const { userId, userChannel } = escalation;
+
+    // Send via appropriate channel
+    switch (userChannel) {
+      case 'web':
+      case 'mobile':
+        // Send via Socket.IO to web/mobile users
+        await sendSocketIOMessage(userId, message, adminName);
+        break;
+
+      case 'whatsapp':
+        // Send via WhatsApp
+        const { sendWhatsAppMessage } = require('./whatsapp');
+        const phoneNumber = userId.replace('whatsapp_', '');
+        await sendWhatsAppMessage(phoneNumber, `*${adminName} (Support):* ${message}`);
+        break;
+
+      case 'slack':
+        // Send via Slack DM
+        const slackUserId = userId.replace('slack_', '');
+        await slack.chat.postMessage({
+          channel: slackUserId,
+          text: `*${adminName} (Support):* ${message}`
+        });
+        break;
+
+      default:
+        console.warn('Unknown user channel:', userChannel);
+    }
+
+    console.log(`Admin response sent to ${userId} via ${userChannel}`);
+  } catch (error) {
+    console.error('Error sending admin response to user:', error);
+  }
+}
+
+// Send message via Socket.IO (will be set by server.js)
+let socketIOInstance = null;
+
+function setSocketIOInstance(io) {
+  socketIOInstance = io;
+}
+
+async function sendSocketIOMessage(userId, message, adminName) {
+  if (!socketIOInstance) {
+    console.warn('Socket.IO instance not available');
+    return;
+  }
+
+  try {
+    // Create admin message object
+    const adminMessage = {
+      id: Date.now(),
+      type: 'admin',
+      content: message,
+      adminName: adminName,
+      timestamp: new Date().toISOString(),
+      isEscalation: true
+    };
+
+    // Send to specific user
+    socketIOInstance.emit('admin_response', adminMessage);
+
+    console.log(`Socket.IO message sent to ${userId} from ${adminName}`);
+  } catch (error) {
+    console.error('Error sending Socket.IO message:', error);
+  }
+}
+
 // Slack event handlers (only if Slack is enabled)
 if (slackEvents) {
   slackEvents.on('message', async (event) => {
     try {
-      // Ignore bot messages and messages in threads (for now)
-      if (event.bot_id || event.thread_ts) {
+      // Handle thread replies (admin responses to escalations)
+      if (event.thread_ts && !event.bot_id) {
+        await handleEscalationResponse(event);
+        return;
+      }
+
+      // Ignore bot messages and other thread messages
+      if (event.bot_id) {
         return;
       }
 
@@ -45,7 +193,10 @@ if (slackEvents) {
         return;
       }
 
-      await handleSlackMessage(event);
+      // Handle regular Slack messages (if not in escalation channel)
+      if (event.channel !== process.env.SLACK_ESCALATION_CHANNEL) {
+        await handleSlackMessage(event);
+      }
     } catch (error) {
       console.error('Error handling Slack message:', error);
     }
@@ -345,19 +496,22 @@ async function sendSlackMessage(channel, text, options = {}) {
   }
 }
 
-async function sendSlackEscalationNotification(channelId, userId, originalMessage) {
+async function sendSlackEscalationNotification(channelId, userId, originalMessage, userChannel = 'web') {
   try {
     // Send to escalation channel
-    const escalationChannel = process.env.SLACK_ESCALATION_CHANNEL || channelId;
-    
-    await slack.chat.postMessage({
+    const escalationChannel = process.env.SLACK_ESCALATION_CHANNEL || 'escalations';
+
+    // Create a unique thread ID for this escalation
+    const escalationId = `escalation_${Date.now()}_${userId.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+    const escalationMessage = await slack.chat.postMessage({
       channel: escalationChannel,
       blocks: [
         {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: '🚨 Chatbot Escalation Alert'
+            text: '🚨 Human Escalation Request'
           }
         },
         {
@@ -365,11 +519,19 @@ async function sendSlackEscalationNotification(channelId, userId, originalMessag
           fields: [
             {
               type: 'mrkdwn',
-              text: `*User:* <@${userId}>`
+              text: `*User ID:* ${userId}`
             },
             {
               type: 'mrkdwn',
-              text: `*Channel:* <#${channelId}>`
+              text: `*Channel:* ${userChannel}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*Time:* ${new Date().toLocaleString()}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*Escalation ID:* ${escalationId}`
             }
           ]
         },
@@ -377,7 +539,17 @@ async function sendSlackEscalationNotification(channelId, userId, originalMessag
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Original Message:*\n${originalMessage}`
+            text: `*User's Message:*\n> ${originalMessage}`
+          }
+        },
+        {
+          type: 'divider'
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*🎯 How to respond:*\n• Reply in this thread to send message to user\n• Use buttons below for quick actions\n• User will see your responses in real-time`
           }
         },
         {
@@ -387,9 +559,10 @@ async function sendSlackEscalationNotification(channelId, userId, originalMessag
               type: 'button',
               text: {
                 type: 'plain_text',
-                text: '✅ Take Over'
+                text: '✅ Take Over Conversation'
               },
               action_id: 'agent_takeover',
+              value: escalationId,
               style: 'primary'
             },
             {
@@ -398,14 +571,40 @@ async function sendSlackEscalationNotification(channelId, userId, originalMessag
                 type: 'plain_text',
                 text: '📞 Schedule Call'
               },
-              action_id: 'schedule_call'
+              action_id: 'schedule_call',
+              value: escalationId
+            },
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: '✅ Resolved'
+              },
+              action_id: 'mark_resolved',
+              value: escalationId,
+              style: 'danger'
             }
           ]
         }
-      ]
+      ],
+      metadata: {
+        event_type: 'escalation',
+        event_payload: {
+          escalation_id: escalationId,
+          user_id: userId,
+          user_channel: userChannel,
+          original_message: originalMessage
+        }
+      }
     });
+
+    // Store escalation mapping for responses
+    await storeEscalationMapping(escalationId, userId, userChannel, escalationMessage.ts);
+
+    return escalationId;
   } catch (error) {
     console.error('Error sending Slack escalation notification:', error);
+    return null;
   }
 }
 
@@ -533,5 +732,6 @@ module.exports = {
   sendSlackMessage,
   sendSlackEscalationNotification,
   getAvailableChannels,
-  findTestChannel
+  findTestChannel,
+  setSocketIOInstance
 };

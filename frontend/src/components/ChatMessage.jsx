@@ -1,9 +1,10 @@
 import React from 'react';
-import { Bot, User, AlertTriangle, Heart, Meh, Frown } from 'lucide-react';
+import { Bot, User, AlertTriangle, Heart, Meh, Frown, UserCheck } from 'lucide-react';
 import VoiceMessage from './VoiceMessage';
 
 const ChatMessage = ({ message }) => {
   const isUser = message.type === 'user';
+  const isAdmin = message.type === 'admin';
   const timestamp = new Date(message.timestamp).toLocaleTimeString([], { 
     hour: '2-digit', 
     minute: '2-digit' 
@@ -37,10 +38,12 @@ const ChatMessage = ({ message }) => {
         {/* Avatar */}
         <div className={`flex-shrink-0 ${isUser ? 'ml-2' : 'mr-2'}`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            isUser ? 'bg-primary-500' : 'bg-gray-200'
+            isUser ? 'bg-primary-500' : isAdmin ? 'bg-orange-500' : 'bg-gray-200'
           }`}>
             {isUser ? (
               <User className="w-4 h-4 text-white" />
+            ) : isAdmin ? (
+              <UserCheck className="w-4 h-4 text-white" />
             ) : (
               <Bot className="w-4 h-4 text-gray-600" />
             )}
@@ -60,8 +63,18 @@ const ChatMessage = ({ message }) => {
           ) : (
             /* Text Message */
             <div className={`chat-bubble ${
-              isUser ? 'chat-bubble-user' : `chat-bubble-bot ${getSentimentColor(message.sentiment)}`
-            } ${!isUser ? 'border-l-4' : ''}`}>
+              isUser ? 'chat-bubble-user' :
+              isAdmin ? 'chat-bubble-admin border-l-4 border-l-orange-400' :
+              `chat-bubble-bot ${getSentimentColor(message.sentiment)}`
+            } ${!isUser && !isAdmin ? 'border-l-4' : ''}`}>
+              {/* Admin name header */}
+              {isAdmin && (
+                <div className="flex items-center mb-2 pb-1 border-b border-orange-200">
+                  <UserCheck className="w-3 h-3 text-orange-600 mr-1" />
+                  <span className="text-xs font-semibold text-orange-700">{message.adminName || 'Support Agent'}</span>
+                </div>
+              )}
+
               <p className="text-sm leading-relaxed">{message.content}</p>
 
               {/* Escalation indicator */}
