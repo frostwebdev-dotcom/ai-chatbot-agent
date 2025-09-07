@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npx vite build",
     "preview": "vite preview",
-    "dev-simple": "python -m http.server 3000",
-    "prebuild": "npm install"
+    "dev-simple": "python -m http.server 3000"
   },
   "dependencies": {
     "react": "18.2.0",
@@ -16,13 +15,13 @@
     "socket.io-client": "4.7.4",
     "firebase": "10.7.1",
     "lucide-react": "0.303.0",
-    "react-hot-toast": "2.4.1"
-  },
-  "devDependencies": {
+    "react-hot-toast": "2.4.1",
+    "vite": "5.0.8",
     "@vitejs/plugin-react": "4.2.1",
     "autoprefixer": "10.4.16",
     "postcss": "8.4.32",
-    "tailwindcss": "3.3.6",
-    "vite": "5.0.8"
+    "tailwindcss": "3.3.6"
+  },
+  "devDependencies": {
   }
 }

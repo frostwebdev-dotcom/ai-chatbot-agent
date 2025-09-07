@@ -23,7 +23,9 @@ export const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     if (currentUser && authToken) {
-      const newSocket = io(import.meta.env.VITE_API_URL, {
+      // Use same domain if VITE_API_URL is empty (production)
+      const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
+      const newSocket = io(apiUrl, {
         auth: {
           token: authToken
         }
@@ -129,7 +131,9 @@ export const ChatProvider = ({ children }) => {
     if (!authToken) return;
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/chat/history`, {
+      // Use same domain if VITE_API_URL is empty (production)
+      const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
+      const response = await fetch(`${apiUrl}/api/chat/history`, {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
