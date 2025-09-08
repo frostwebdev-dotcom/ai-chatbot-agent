@@ -110,23 +110,46 @@ const handleChatMessage = async ({ userId, message, language, isVoiceMessage = f
         console.error('❌ Slack escalation failed:', slackError.message);
       }
     } else {
-      // Check if user is in active escalation and forward message to Slack
+      // Check if user is in active escalation
       try {
-        const { sendUserMessageToSlack } = require('../integrations/slack');
-        const forwarded = await sendUserMessageToSlack(userId, message);
-        if (forwarded) {
-          console.log('📤 User message forwarded to Slack thread');
+        const { sendUserMessageToSlack, isUserInActiveEscalation } = require('../integrations/slack');
+        const inEscalation = await isUserInActiveEscalation(userId);
+
+        if (inEscalation) {
+          // User is talking to human agent - forward message to Slack and don't generate AI response
+          console.log('👤 User in active escalation - forwarding to human agent');
+          const forwarded = await sendUserMessageToSlack(userId, message);
+
+          if (forwarded) {
+            console.log('📤 User message forwarded to Slack thread');
+            // Return a response indicating human agent will respond
+            botResponse = language === 'es'
+              ? 'Tu mensaje ha sido enviado al agente de soporte. Te responderá en breve.'
+              : 'Your message has been sent to the support agent. They will respond shortly.';
+          } else {
+            // Fallback if forwarding fails
+            botResponse = language === 'es'
+              ? 'Estás conectado con un agente humano, pero hubo un problema enviando tu mensaje. Por favor, intenta de nuevo.'
+              : 'You are connected to a human agent, but there was an issue sending your message. Please try again.';
+          }
+        } else {
+          // No active escalation - generate AI response normally
+          console.log('🤖 No active escalation - generating AI response');
+          botResponse = await generateResponse(message, {
+            language,
+            sentiment,
+            userProfile
+          });
         }
       } catch (forwardError) {
-        console.error('❌ Failed to forward user message to Slack:', forwardError.message);
+        console.error('❌ Failed to check escalation status:', forwardError.message);
+        // Fallback to AI response if there's an error
+        botResponse = await generateResponse(message, {
+          language,
+          sentiment,
+          userProfile
+        });
       }
-
-      // Generate AI response
-      botResponse = await generateResponse(message, {
-        language,
-        sentiment,
-        userProfile
-      });
     }
 
     // Save chat message to Firestore

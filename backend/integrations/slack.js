@@ -1095,6 +1095,26 @@ if (slackEvents) {
   });
 }
 
+// Function to check if user is in active escalation
+async function isUserInActiveEscalation(userId) {
+  try {
+    const activeEscalation = activeEscalations.get(userId);
+    const isActive = activeEscalation && activeEscalation.status === 'active';
+
+    console.log('🔍 Checking escalation status for user:', {
+      userId,
+      hasEscalation: !!activeEscalation,
+      status: activeEscalation?.status,
+      isActive
+    });
+
+    return isActive;
+  } catch (error) {
+    console.error('❌ Error checking escalation status:', error);
+    return false;
+  }
+}
+
 // Function to send user messages to Slack thread during active escalation
 async function sendUserMessageToSlack(userId, message) {
   if (!isSlackEnabled || !slack) {
@@ -1158,5 +1178,6 @@ module.exports = {
   getAvailableChannels,
   findTestChannel,
   setSocketIOInstance,
-  sendUserMessageToSlack
+  sendUserMessageToSlack,
+  isUserInActiveEscalation
 };

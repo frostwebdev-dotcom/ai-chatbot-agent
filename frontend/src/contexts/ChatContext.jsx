@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
+import useNotificationSound from '../hooks/useNotificationSound';
 
 const ChatContext = createContext();
 
@@ -20,6 +21,9 @@ export const ChatProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [language, setLanguage] = useState('en');
+  const [isHumanAgentActive, setIsHumanAgentActive] = useState(false);
+  const [currentAgentName, setCurrentAgentName] = useState('');
+  const { playNotificationSound } = useNotificationSound();
 
   useEffect(() => {
     if (currentUser && authToken) {
@@ -62,6 +66,9 @@ export const ChatProvider = ({ children }) => {
           escalated: response.escalated
         }]);
 
+        // Play notification sound for bot responses
+        playNotificationSound();
+
         if (response.escalated) {
           toast.success('Connected to human agent!');
         }
@@ -99,6 +106,13 @@ export const ChatProvider = ({ children }) => {
           console.log('📝 Updated messages array length:', newMessages.length);
           return newMessages;
         });
+
+        // Set human agent as active
+        setIsHumanAgentActive(true);
+        setCurrentAgentName(response.adminName);
+
+        // Play notification sound for admin messages (more prominent)
+        playNotificationSound();
 
         // Show notification
         toast.success(`🙋‍♂️ ${response.adminName} is helping you`, {
@@ -217,7 +231,9 @@ export const ChatProvider = ({ children }) => {
     setLanguage,
     sendMessage,
     clearMessages,
-    loadChatHistory
+    loadChatHistory,
+    isHumanAgentActive,
+    currentAgentName
   };
 
   return (

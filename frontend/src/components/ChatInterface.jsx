@@ -20,15 +20,17 @@ import TypingIndicator from './TypingIndicator';
 
 const ChatInterface = () => {
   const { currentUser, logout } = useAuth();
-  const { 
-    messages, 
-    isConnected, 
-    isTyping, 
-    language, 
-    setLanguage, 
-    sendMessage, 
+  const {
+    messages,
+    isConnected,
+    isTyping,
+    language,
+    setLanguage,
+    sendMessage,
     clearMessages,
-    loadChatHistory 
+    loadChatHistory,
+    isHumanAgentActive,
+    currentAgentName
   } = useChat();
 
   const [inputMessage, setInputMessage] = useState('');
@@ -141,11 +143,21 @@ const ChatInterface = () => {
               <MessageCircle className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">AI Assistant</h1>
+              <h1 className="text-lg font-semibold text-gray-900">
+                {isHumanAgentActive ? (
+                  language === 'es' ? 'Agente Humano' : 'Human Agent'
+                ) : (
+                  language === 'es' ? 'Asistente IA' : 'AI Assistant'
+                )}
+              </h1>
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-sm text-gray-500">
-                  {isConnected ? 'Connected' : 'Disconnected'}
+                  {isHumanAgentActive ? (
+                    `${currentAgentName} ${language === 'es' ? 'te está ayudando' : 'is helping you'}`
+                  ) : (
+                    isConnected ? (language === 'es' ? 'Conectado' : 'Connected') : (language === 'es' ? 'Desconectado' : 'Disconnected')
+                  )}
                 </span>
               </div>
             </div>
