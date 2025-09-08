@@ -110,6 +110,17 @@ const handleChatMessage = async ({ userId, message, language, isVoiceMessage = f
         console.error('❌ Slack escalation failed:', slackError.message);
       }
     } else {
+      // Check if user is in active escalation and forward message to Slack
+      try {
+        const { sendUserMessageToSlack } = require('../integrations/slack');
+        const forwarded = await sendUserMessageToSlack(userId, message);
+        if (forwarded) {
+          console.log('📤 User message forwarded to Slack thread');
+        }
+      } catch (forwardError) {
+        console.error('❌ Failed to forward user message to Slack:', forwardError.message);
+      }
+
       // Generate AI response
       botResponse = await generateResponse(message, {
         language,

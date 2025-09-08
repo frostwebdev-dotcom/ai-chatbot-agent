@@ -33,23 +33,30 @@ if (isSlackEnabled) {
 
 // In-memory storage for escalation mappings (use Redis in production)
 const escalationMappings = new Map();
+const activeEscalations = new Map(); // Track active escalations by user ID
 
 // Store escalation mapping
 async function storeEscalationMapping(escalationId, userId, userChannel, slackThreadTs) {
-  escalationMappings.set(escalationId, {
+  const escalationData = {
+    escalationId,
     userId,
     userChannel,
     slackThreadTs,
     status: 'active',
     createdAt: new Date().toISOString()
-  });
+  };
+
+  escalationMappings.set(escalationId, escalationData);
 
   // Also store by thread timestamp for quick lookup
-  escalationMappings.set(slackThreadTs, {
+  escalationMappings.set(slackThreadTs, escalationData);
+
+  // Track active escalation by user ID
+  activeEscalations.set(userId, {
     escalationId,
-    userId,
-    userChannel,
-    status: 'active'
+    slackThreadTs,
+    status: 'active',
+    createdAt: new Date().toISOString()
   });
 }
 
@@ -172,20 +179,21 @@ async function sendSocketIOMessage(userId, message, adminName) {
       rooms: Array.from(socketIOInstance.sockets.adapter.rooms.keys())
     });
 
-    // Try multiple targeting strategies
-
-    // Strategy 1: Send to specific user room
+    // Use only one targeting strategy to avoid duplicates
     const userRoom = `user_${userId}`;
-    socketIOInstance.to(userRoom).emit('admin_response', adminMessage);
-    console.log(`📡 Sent to room: ${userRoom}`);
 
-    // Strategy 2: Send to user ID directly
-    socketIOInstance.to(userId).emit('admin_response', adminMessage);
-    console.log(`📡 Sent to user ID: ${userId}`);
+    // Check if user room exists
+    const roomExists = socketIOInstance.sockets.adapter.rooms.has(userRoom);
 
-    // Strategy 3: Broadcast to all clients (they'll filter by user)
-    socketIOInstance.emit('admin_response', adminMessage);
-    console.log(`📡 Broadcasted to all clients`);
+    if (roomExists) {
+      // Send to specific user room (preferred method)
+      socketIOInstance.to(userRoom).emit('admin_response', adminMessage);
+      console.log(`📡 Sent to user room: ${userRoom} (room exists)`);
+    } else {
+      // Fallback: broadcast to all clients with user ID filter
+      socketIOInstance.emit('admin_response', { ...adminMessage, targetUserId: userId });
+      console.log(`📡 Broadcasted with user filter: ${userId} (room doesn't exist)`);
+    }
 
     console.log(`✅ Socket.IO message sent to ${userId} from ${adminName}`);
   } catch (error) {
@@ -708,6 +716,10 @@ async function handleSlackInteraction(payload) {
           resolvedEscalation.resolved_by = user.name;
           resolvedEscalation.resolved_at = new Date().toISOString();
           escalationMappings.set(escalationId, resolvedEscalation);
+
+          // Remove from active escalations
+          activeEscalations.delete(resolvedEscalation.userId);
+          console.log('✅ Removed user from active escalations:', resolvedEscalation.userId);
         }
 
         // Update the original message
@@ -1083,6 +1095,61 @@ if (slackEvents) {
   });
 }
 
+// Function to send user messages to Slack thread during active escalation
+async function sendUserMessageToSlack(userId, message) {
+  if (!isSlackEnabled || !slack) {
+    return false;
+  }
+
+  try {
+    // Check if user has active escalation
+    const activeEscalation = activeEscalations.get(userId);
+
+    if (!activeEscalation || activeEscalation.status !== 'active') {
+      console.log('📝 No active escalation for user:', userId);
+      return false;
+    }
+
+    console.log('📤 Forwarding user message to Slack thread:', {
+      userId,
+      message: message.substring(0, 50) + '...',
+      threadTs: activeEscalation.slackThreadTs
+    });
+
+    // Send user message to Slack thread
+    await slack.chat.postMessage({
+      channel: process.env.SLACK_ESCALATION_CHANNEL || 'escalations',
+      thread_ts: activeEscalation.slackThreadTs,
+      text: `**User:** ${message}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `👤 **User:** ${message}`
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `Sent at ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    });
+
+    console.log('✅ User message forwarded to Slack thread');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Error forwarding user message to Slack:', error);
+    return false;
+  }
+}
+
 module.exports = {
   router,
   slack,
@@ -1090,5 +1157,6 @@ module.exports = {
   sendSlackEscalationNotification,
   getAvailableChannels,
   findTestChannel,
-  setSocketIOInstance
+  setSocketIOInstance,
+  sendUserMessageToSlack
 };

@@ -77,7 +77,12 @@ export const ChatProvider = ({ children }) => {
         console.log('📨 Received admin response:', response);
         console.log('🔍 Current user from auth:', currentUser?.uid);
 
-        // Add message regardless of user ID for now (for debugging)
+        // Filter messages by user ID if targetUserId is specified
+        if (response.targetUserId && response.targetUserId !== currentUser?.uid) {
+          console.log('🚫 Message not for this user, ignoring');
+          return;
+        }
+
         const adminMessage = {
           id: Date.now(),
           type: 'admin',
@@ -91,7 +96,7 @@ export const ChatProvider = ({ children }) => {
 
         setMessages(prev => {
           const newMessages = [...prev, adminMessage];
-          console.log('📝 Updated messages array:', newMessages);
+          console.log('📝 Updated messages array length:', newMessages.length);
           return newMessages;
         });
 
