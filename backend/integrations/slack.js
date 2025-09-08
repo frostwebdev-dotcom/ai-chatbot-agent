@@ -268,16 +268,21 @@ router.post('/interactive', async (req, res) => {
   }
 
   try {
+    console.log('🔘 Slack interactive request received');
+    console.log('Raw body:', req.body);
+
     const payload = JSON.parse(req.body.payload);
+    console.log('📦 Parsed payload:', JSON.stringify(payload, null, 2));
 
     if (payload.type === 'block_actions') {
       await handleSlackInteraction(payload);
     }
 
-    res.status(200).send();
+    // Slack expects a 200 response quickly
+    res.status(200).send('OK');
   } catch (error) {
-    console.error('Slack interactive error:', error);
-    res.status(500).send('Error');
+    console.error('❌ Slack interactive error:', error);
+    res.status(200).send('Error processing request');
   }
 });
 
@@ -613,8 +618,90 @@ async function handleSlackInteraction(payload) {
     const action = payload.actions[0];
     const user = payload.user;
     const channel = payload.channel;
+    const escalationId = action.value; // This contains the escalation ID
+
+    console.log('🔘 Handling interaction:', {
+      action_id: action.action_id,
+      user: user.name,
+      escalation_id: escalationId
+    });
 
     switch (action.action_id) {
+      case 'agent_takeover':
+        // Mark escalation as taken over
+        const escalation = escalationMappings.get(escalationId);
+        if (escalation) {
+          escalation.status = 'taken_over';
+          escalation.agent = user.name;
+          escalationMappings.set(escalationId, escalation);
+        }
+
+        // Update the original message to show takeover
+        await slack.chat.update({
+          channel: channel.id,
+          ts: payload.message.ts,
+          blocks: [
+            ...payload.message.blocks.slice(0, -1), // Keep all blocks except the last (actions)
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `✅ *Conversation taken over by <@${user.id}>*\n\n*Next steps:*\n• Reply in this thread to send messages to the user\n• User will see your responses in real-time`
+              }
+            }
+          ]
+        });
+
+        // Send confirmation to user
+        if (escalation) {
+          await sendAdminResponseToUser(
+            escalation,
+            `Hello! I'm ${user.real_name || user.name} from support. I'm here to help you. How can I assist you today?`,
+            user.real_name || user.name
+          );
+        }
+
+        console.log('✅ Agent takeover completed');
+        break;
+
+      case 'schedule_call':
+        await slack.chat.postEphemeral({
+          channel: channel.id,
+          user: user.id,
+          text: '📞 Call scheduling feature coming soon! For now, please respond in this thread to help the user.'
+        });
+        break;
+
+      case 'mark_resolved':
+        // Mark escalation as resolved
+        const resolvedEscalation = escalationMappings.get(escalationId);
+        if (resolvedEscalation) {
+          resolvedEscalation.status = 'resolved';
+          resolvedEscalation.resolved_by = user.name;
+          resolvedEscalation.resolved_at = new Date().toISOString();
+          escalationMappings.set(escalationId, resolvedEscalation);
+        }
+
+        // Update the original message
+        await slack.chat.update({
+          channel: channel.id,
+          ts: payload.message.ts,
+          blocks: [
+            ...payload.message.blocks.slice(0, -1), // Keep all blocks except actions
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `✅ *Escalation resolved by <@${user.id}>*\n\nResolved at: ${new Date().toLocaleString()}`
+              }
+            }
+          ]
+        });
+
+        console.log('✅ Escalation marked as resolved');
+        break;
+
+      // Legacy handlers (keep for compatibility)
       case 'feedback_positive':
         await slack.chat.postEphemeral({
           channel: channel.id,
@@ -629,7 +716,6 @@ async function handleSlackInteraction(payload) {
           user: user.id,
           text: '👎 I\'m sorry I couldn\'t help better. A human agent will be notified.'
         });
-        // Trigger escalation
         await sendSlackEscalationNotification(channel.id, user.id, 'User reported unhelpful response');
         break;
 
@@ -642,22 +728,29 @@ async function handleSlackInteraction(payload) {
         await sendSlackEscalationNotification(channel.id, user.id, 'User requested human assistance');
         break;
 
-      case 'agent_takeover':
-        await slack.chat.postMessage({
-          channel: channel.id,
-          text: `🙋‍♂️ <@${user.id}> is now handling this conversation.`
-        });
-        break;
+      default:
+        console.warn('Unknown action:', action.action_id);
     }
   } catch (error) {
-    console.error('Error handling Slack interaction:', error);
+    console.error('❌ Error handling Slack interaction:', error);
   }
 }
 
 function verifySlackRequest(req) {
+  // For now, just check if the request has the expected structure
   // In production, implement proper Slack request verification
   // using the signing secret and timestamp
-  return true; // Simplified for demo
+
+  if (req.body && req.body.payload) {
+    try {
+      const payload = JSON.parse(req.body.payload);
+      return payload.team && payload.user;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  return req.body && (req.body.command || req.body.user_id);
 }
 
 // Get available channels for testing
