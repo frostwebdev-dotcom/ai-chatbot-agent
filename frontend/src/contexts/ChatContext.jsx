@@ -32,9 +32,16 @@ export const ChatProvider = ({ children }) => {
       });
 
       newSocket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('✅ Connected to server, Socket ID:', newSocket.id);
+        console.log('🔍 Current user ID:', currentUser?.uid);
         setIsConnected(true);
         toast.success('Connected to chat server');
+
+        // Join user room for targeted messages
+        if (currentUser?.uid) {
+          newSocket.emit('join_room', currentUser.uid);
+          console.log('🏠 Joined room for user:', currentUser.uid);
+        }
       });
 
       newSocket.on('disconnect', () => {
@@ -68,15 +75,25 @@ export const ChatProvider = ({ children }) => {
       // Handle admin responses from Slack escalation
       newSocket.on('admin_response', (response) => {
         console.log('📨 Received admin response:', response);
+        console.log('🔍 Current user from auth:', currentUser?.uid);
 
-        setMessages(prev => [...prev, {
+        // Add message regardless of user ID for now (for debugging)
+        const adminMessage = {
           id: Date.now(),
           type: 'admin',
           content: response.content,
           adminName: response.adminName,
           timestamp: response.timestamp,
           isEscalation: true
-        }]);
+        };
+
+        console.log('➕ Adding admin message:', adminMessage);
+
+        setMessages(prev => {
+          const newMessages = [...prev, adminMessage];
+          console.log('📝 Updated messages array:', newMessages);
+          return newMessages;
+        });
 
         // Show notification
         toast.success(`🙋‍♂️ ${response.adminName} is helping you`, {

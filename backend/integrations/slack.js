@@ -168,14 +168,24 @@ async function sendSocketIOMessage(userId, message, adminName) {
       userId,
       adminName,
       message: message.substring(0, 50) + '...',
-      connectedClients: socketIOInstance.engine.clientsCount
+      connectedClients: socketIOInstance.engine.clientsCount,
+      rooms: Array.from(socketIOInstance.sockets.adapter.rooms.keys())
     });
 
-    // Send to all connected clients (they'll filter by user)
-    socketIOInstance.emit('admin_response', adminMessage);
+    // Try multiple targeting strategies
 
-    // Also try sending to specific user room if they're in one
+    // Strategy 1: Send to specific user room
+    const userRoom = `user_${userId}`;
+    socketIOInstance.to(userRoom).emit('admin_response', adminMessage);
+    console.log(`📡 Sent to room: ${userRoom}`);
+
+    // Strategy 2: Send to user ID directly
     socketIOInstance.to(userId).emit('admin_response', adminMessage);
+    console.log(`📡 Sent to user ID: ${userId}`);
+
+    // Strategy 3: Broadcast to all clients (they'll filter by user)
+    socketIOInstance.emit('admin_response', adminMessage);
+    console.log(`📡 Broadcasted to all clients`);
 
     console.log(`✅ Socket.IO message sent to ${userId} from ${adminName}`);
   } catch (error) {
@@ -657,6 +667,7 @@ async function handleSlackInteraction(payload) {
         await slack.chat.update({
           channel: channel.id,
           ts: payload.message.ts,
+          text: `Escalation taken over by ${user.name}`, // Add text for accessibility
           blocks: [
             ...payload.message.blocks.slice(0, -1), // Keep all blocks except the last (actions)
             {
@@ -948,8 +959,8 @@ router.get('/events', (req, res) => {
   });
 });
 
-// Custom events handler with raw body parsing for Slack signature verification
-router.post('/events', express.raw({ type: 'application/json' }), (req, res) => {
+// Custom events handler - handle both parsed and raw bodies
+router.post('/events', (req, res) => {
   if (!isSlackEnabled) {
     return res.status(503).json({ error: 'Slack integration not configured' });
   }
@@ -957,10 +968,26 @@ router.post('/events', express.raw({ type: 'application/json' }), (req, res) => 
   console.log('📨 Slack events request received');
 
   try {
-    // Parse the raw body
-    const body = JSON.parse(req.body.toString());
+    // Handle both parsed JSON (from Express) and raw body
+    let body;
 
-    console.log('📦 Parsed body type:', body.type);
+    if (typeof req.body === 'object' && req.body !== null) {
+      // Body is already parsed by Express
+      body = req.body;
+      console.log('📦 Using parsed body');
+    } else if (typeof req.body === 'string') {
+      // Body is a string, parse it
+      body = JSON.parse(req.body);
+      console.log('📦 Parsed string body');
+    } else if (Buffer.isBuffer(req.body)) {
+      // Body is a buffer, convert and parse
+      body = JSON.parse(req.body.toString());
+      console.log('📦 Parsed buffer body');
+    } else {
+      throw new Error('Unknown body type: ' + typeof req.body);
+    }
+
+    console.log('📦 Event type:', body.type);
 
     // Handle URL verification challenge
     if (body.type === 'url_verification') {
@@ -991,6 +1018,8 @@ router.post('/events', express.raw({ type: 'application/json' }), (req, res) => 
 
   } catch (error) {
     console.error('❌ Error parsing Slack event:', error);
+    console.log('Raw body type:', typeof req.body);
+    console.log('Raw body:', req.body);
     res.status(200).send('OK'); // Still respond OK to Slack
   }
 });
