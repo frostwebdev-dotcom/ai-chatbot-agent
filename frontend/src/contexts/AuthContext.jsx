@@ -97,13 +97,17 @@ export const AuthProvider = ({ children }) => {
       
       if (user) {
         try {
-          const token = await user.getIdToken();
+          // Force refresh token to ensure it's valid
+          const token = await user.getIdToken(true);
           setAuthToken(token);
-          
+
+          console.log('🔑 Auth token refreshed for user:', user.uid);
+
           // Create/update user profile on backend
           await createUserProfile(token, user.displayName);
         } catch (error) {
-          console.error('Token error:', error);
+          console.error('❌ Token error:', error);
+          setAuthToken(null);
         }
       } else {
         setAuthToken(null);
@@ -115,13 +119,29 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+  const refreshToken = async () => {
+    if (currentUser) {
+      try {
+        const token = await currentUser.getIdToken(true);
+        setAuthToken(token);
+        console.log('🔄 Auth token manually refreshed');
+        return token;
+      } catch (error) {
+        console.error('❌ Token refresh failed:', error);
+        return null;
+      }
+    }
+    return null;
+  };
+
   const value = {
     currentUser,
     authToken,
     signup,
     login,
     logout,
-    loading
+    loading,
+    refreshToken
   };
 
   return (

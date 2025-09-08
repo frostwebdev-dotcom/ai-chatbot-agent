@@ -5,15 +5,23 @@ const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
+    console.log('🔑 Auth middleware - checking token:', {
+      hasAuthHeader: !!authHeader,
+      tokenLength: token?.length,
+      tokenStart: token?.substring(0, 20) + '...'
+    });
+
     if (!token) {
+      console.log('❌ No token provided');
       return res.status(401).json({ error: 'Access token required' });
     }
 
     const decodedToken = await getAuth().verifyIdToken(token);
+    console.log('✅ Token verified for user:', decodedToken.uid);
     req.user = decodedToken;
     next();
   } catch (error) {
-    console.error('Token verification error:', error);
+    console.error('❌ Token verification error:', error.message);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 };

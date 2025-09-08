@@ -15,7 +15,7 @@ export const useChat = () => {
 };
 
 export const ChatProvider = ({ children }) => {
-  const { currentUser, authToken } = useAuth();
+  const { currentUser, authToken, refreshToken } = useAuth();
   const [socket, setSocket] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -195,6 +195,8 @@ export const ChatProvider = ({ children }) => {
     }
 
     console.log('📚 Loading chat history...');
+    console.log('🔑 Auth token (first 20 chars):', authToken?.substring(0, 20) + '...');
+    console.log('👤 Current user:', currentUser?.uid);
 
     try {
       // Use same domain if VITE_API_URL is empty (production)
@@ -250,6 +252,55 @@ export const ChatProvider = ({ children }) => {
 
         if (formattedMessages.length > 0) {
           toast.success(`Loaded ${data.chats.length} previous conversations`);
+        }
+      } else if (response.status === 403) {
+        console.log('🔄 Token expired, trying to refresh...');
+        const newToken = await refreshToken();
+
+        if (newToken) {
+          // Retry with new token
+          console.log('🔄 Retrying with refreshed token...');
+          const retryResponse = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${newToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (retryResponse.ok) {
+            const data = await retryResponse.json();
+            console.log('📚 Chat history loaded after token refresh:', data.chats?.length);
+
+            const formattedMessages = [];
+            data.chats.forEach(chat => {
+              formattedMessages.push({
+                id: `user-${chat.timestamp}`,
+                type: 'user',
+                content: chat.userMessage,
+                timestamp: chat.timestamp
+              });
+              formattedMessages.push({
+                id: `bot-${chat.timestamp}`,
+                type: 'bot',
+                content: chat.botResponse,
+                timestamp: chat.timestamp,
+                sentiment: chat.sentiment,
+                language: chat.language,
+                escalated: chat.escalated
+              });
+            });
+
+            setMessages(formattedMessages);
+            setHistoryLoaded(true);
+
+            if (formattedMessages.length > 0) {
+              toast.success(`Loaded ${data.chats.length} previous conversations`);
+            }
+          } else {
+            toast.error('Failed to load chat history after token refresh');
+          }
+        } else {
+          toast.error('Please log in again');
         }
       } else {
         const errorData = await response.text();

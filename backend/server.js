@@ -20,9 +20,28 @@ const server = http.createServer(app);
 // Initialize Firebase
 initializeFirebase();
 
-// Security middleware - disable CSP for Firebase compatibility
+// Security middleware - configure CSP for Firebase and audio compatibility
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP to allow Firebase
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: [
+        "'self'",
+        "https://identitytoolkit.googleapis.com",
+        "https://securetoken.googleapis.com",
+        "https://firestore.googleapis.com",
+        "wss:",
+        "ws:"
+      ],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      mediaSrc: ["'self'", "blob:", "data:"], // Allow audio/media from blob URLs
+      objectSrc: ["'none'"],
+      frameSrc: ["'self'"]
+    }
+  },
   crossOriginEmbedderPolicy: false
 }));
 app.use(cors({
