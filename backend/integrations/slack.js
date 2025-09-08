@@ -149,7 +149,7 @@ function setSocketIOInstance(io) {
 
 async function sendSocketIOMessage(userId, message, adminName) {
   if (!socketIOInstance) {
-    console.warn('Socket.IO instance not available');
+    console.warn('⚠️ Socket.IO instance not available');
     return;
   }
 
@@ -164,12 +164,22 @@ async function sendSocketIOMessage(userId, message, adminName) {
       isEscalation: true
     };
 
-    // Send to specific user
+    console.log('📤 Sending admin message via Socket.IO:', {
+      userId,
+      adminName,
+      message: message.substring(0, 50) + '...',
+      connectedClients: socketIOInstance.engine.clientsCount
+    });
+
+    // Send to all connected clients (they'll filter by user)
     socketIOInstance.emit('admin_response', adminMessage);
 
-    console.log(`Socket.IO message sent to ${userId} from ${adminName}`);
+    // Also try sending to specific user room if they're in one
+    socketIOInstance.to(userId).emit('admin_response', adminMessage);
+
+    console.log(`✅ Socket.IO message sent to ${userId} from ${adminName}`);
   } catch (error) {
-    console.error('Error sending Socket.IO message:', error);
+    console.error('❌ Error sending Socket.IO message:', error);
   }
 }
 
@@ -809,6 +819,42 @@ async function findTestChannel() {
     return null;
   }
 }
+
+// Debug endpoint to test admin message sending
+router.post('/test-admin-message', async (req, res) => {
+  if (!isSlackEnabled) {
+    return res.json({ success: false, error: 'Slack not enabled' });
+  }
+
+  try {
+    const { userId, message, adminName } = req.body;
+
+    if (!userId || !message) {
+      return res.json({
+        success: false,
+        error: 'Missing userId or message',
+        required: { userId: 'string', message: 'string', adminName: 'string (optional)' }
+      });
+    }
+
+    console.log('🧪 Testing admin message:', { userId, message, adminName });
+
+    // Test sending admin message
+    await sendSocketIOMessage(userId, message, adminName || 'Test Admin');
+
+    res.json({
+      success: true,
+      message: 'Admin message sent',
+      data: { userId, message, adminName: adminName || 'Test Admin' }
+    });
+
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // Debug endpoint to test Slack connection
 router.get('/test', async (req, res) => {

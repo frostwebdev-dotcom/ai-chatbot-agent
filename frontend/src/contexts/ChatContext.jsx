@@ -67,6 +67,8 @@ export const ChatProvider = ({ children }) => {
 
       // Handle admin responses from Slack escalation
       newSocket.on('admin_response', (response) => {
+        console.log('📨 Received admin response:', response);
+
         setMessages(prev => [...prev, {
           id: Date.now(),
           type: 'admin',
