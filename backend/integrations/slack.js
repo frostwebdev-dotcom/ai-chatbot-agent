@@ -616,6 +616,13 @@ async function sendSlackEscalationNotification(channelId, userId, originalMessag
     // Store escalation mapping for responses
     await storeEscalationMapping(escalationId, userId, userChannel, escalationMessage.ts);
 
+    console.log('📝 Stored escalation mapping:', {
+      escalationId,
+      userId,
+      userChannel,
+      slackThreadTs: escalationMessage.ts
+    });
+
     return escalationId;
   } catch (error) {
     console.error('Error sending Slack escalation notification:', error);
@@ -941,40 +948,103 @@ router.get('/events', (req, res) => {
   });
 });
 
-// Custom events handler to handle challenge verification
-router.post('/events', (req, res) => {
+// Custom events handler with raw body parsing for Slack signature verification
+router.post('/events', express.raw({ type: 'application/json' }), (req, res) => {
   if (!isSlackEnabled) {
     return res.status(503).json({ error: 'Slack integration not configured' });
   }
 
   console.log('📨 Slack events request received');
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
 
-  // Handle URL verification challenge
-  if (req.body && req.body.type === 'url_verification') {
-    console.log('🔐 Handling Slack URL verification challenge');
-    console.log('Challenge:', req.body.challenge);
-    return res.status(200).send(req.body.challenge);
-  }
+  try {
+    // Parse the raw body
+    const body = JSON.parse(req.body.toString());
 
-  // Handle actual events
-  if (req.body && req.body.type === 'event_callback') {
-    console.log('📩 Handling Slack event:', req.body.event.type);
+    console.log('📦 Parsed body type:', body.type);
 
-    // Use the Slack Events API adapter for actual events
-    if (slackEvents) {
-      // Forward to the events adapter
-      slackEvents.expressMiddleware()(req, res);
-    } else {
-      res.status(200).send('OK');
+    // Handle URL verification challenge
+    if (body.type === 'url_verification') {
+      console.log('🔐 Handling Slack URL verification challenge');
+      console.log('Challenge:', body.challenge);
+      return res.status(200).send(body.challenge);
     }
-    return;
-  }
 
-  // Default response
-  res.status(200).send('OK');
+    // Handle actual events
+    if (body.type === 'event_callback') {
+      console.log('📩 Handling Slack event:', body.event.type);
+
+      // Handle thread replies (admin responses)
+      if (body.event.type === 'message' && body.event.thread_ts && !body.event.bot_id) {
+        console.log('💬 Thread reply detected - potential admin response');
+        handleSlackThreadReply(body.event);
+      }
+
+      // Handle other message events
+      if (body.event.type === 'message' && !body.event.thread_ts && !body.event.bot_id) {
+        console.log('💬 Regular message detected');
+        // Handle regular Slack messages if needed
+      }
+    }
+
+    // Always respond with 200 OK to Slack
+    res.status(200).send('OK');
+
+  } catch (error) {
+    console.error('❌ Error parsing Slack event:', error);
+    res.status(200).send('OK'); // Still respond OK to Slack
+  }
 });
+
+// Handle thread replies from admins
+async function handleSlackThreadReply(event) {
+  try {
+    console.log('🔍 Processing thread reply:', {
+      user: event.user,
+      text: event.text,
+      thread_ts: event.thread_ts,
+      channel: event.channel
+    });
+
+    // Find the escalation by thread timestamp
+    const escalation = escalationMappings.get(event.thread_ts);
+
+    if (!escalation) {
+      console.log('⚠️ No escalation found for thread:', event.thread_ts);
+      return;
+    }
+
+    console.log('✅ Found escalation:', escalation);
+
+    // Get admin user info
+    let adminName = 'Support Agent';
+    try {
+      const userInfo = await slack.users.info({ user: event.user });
+      adminName = userInfo.user.real_name || userInfo.user.name || 'Support Agent';
+    } catch (error) {
+      console.warn('Could not get admin user info:', error.message);
+    }
+
+    console.log(`💬 Admin ${adminName} responding: ${event.text}`);
+
+    // Send admin response to user
+    await sendAdminResponseToUser(escalation, event.text, adminName);
+
+    // Add reaction to show message was forwarded
+    try {
+      await slack.reactions.add({
+        channel: event.channel,
+        timestamp: event.ts,
+        name: 'white_check_mark'
+      });
+      console.log('✅ Added checkmark reaction');
+    } catch (error) {
+      console.warn('Could not add reaction:', error.message);
+    }
+
+  } catch (error) {
+    console.error('❌ Error handling thread reply:', error);
+  }
+}
 
 // Also keep the original events adapter mount for compatibility
 if (slackEvents) {
