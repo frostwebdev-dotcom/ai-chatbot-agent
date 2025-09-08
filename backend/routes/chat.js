@@ -11,14 +11,26 @@ router.get('/history', authenticateToken, async (req, res) => {
     const { uid } = req.user;
     const limit = parseInt(req.query.limit) || 50;
 
+    console.log('📚 Getting chat history for user:', uid, 'limit:', limit);
+
     const chatHistory = await getChatHistory(uid, limit);
-    
-    res.json({ 
+
+    console.log('📚 Chat history retrieved:', {
+      userId: uid,
+      count: chatHistory.length,
+      firstChat: chatHistory[0] ? {
+        id: chatHistory[0].id,
+        timestamp: chatHistory[0].timestamp,
+        userMessage: chatHistory[0].userMessage?.substring(0, 50) + '...'
+      } : null
+    });
+
+    res.json({
       chats: chatHistory,
       count: chatHistory.length
     });
   } catch (error) {
-    console.error('Get chat history error:', error);
+    console.error('❌ Get chat history error:', error);
     res.status(500).json({ error: 'Failed to get chat history' });
   }
 });

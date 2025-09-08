@@ -23,6 +23,7 @@ export const ChatProvider = ({ children }) => {
   const [language, setLanguage] = useState('en');
   const [isHumanAgentActive, setIsHumanAgentActive] = useState(false);
   const [currentAgentName, setCurrentAgentName] = useState('');
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const { playNotificationSound } = useNotificationSound();
 
   useEffect(() => {
@@ -45,6 +46,11 @@ export const ChatProvider = ({ children }) => {
         if (currentUser?.uid) {
           newSocket.emit('join_room', currentUser.uid);
           console.log('🏠 Joined room for user:', currentUser.uid);
+        }
+
+        // Load chat history when connected (only if not already loaded)
+        if (!historyLoaded) {
+          loadChatHistory();
         }
       });
 
@@ -183,19 +189,36 @@ export const ChatProvider = ({ children }) => {
   };
 
   const loadChatHistory = async () => {
-    if (!authToken) return;
+    if (!authToken) {
+      console.log('⚠️ No auth token available for loading chat history');
+      return;
+    }
+
+    console.log('📚 Loading chat history...');
 
     try {
       // Use same domain if VITE_API_URL is empty (production)
       const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
-      const response = await fetch(`${apiUrl}/api/chat/history`, {
+      const url = `${apiUrl}/api/chat/history`;
+
+      console.log('📡 Fetching chat history from:', url);
+
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${authToken}`
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
         }
       });
 
+      console.log('📡 Chat history response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('📚 Chat history data received:', {
+          chatCount: data.chats?.length || 0,
+          firstChat: data.chats?.[0]
+        });
+
         const formattedMessages = [];
 
         data.chats.forEach(chat => {
@@ -216,10 +239,26 @@ export const ChatProvider = ({ children }) => {
           });
         });
 
+        console.log('📝 Setting formatted messages:', {
+          totalMessages: formattedMessages.length,
+          userMessages: formattedMessages.filter(m => m.type === 'user').length,
+          botMessages: formattedMessages.filter(m => m.type === 'bot').length
+        });
+
         setMessages(formattedMessages);
+        setHistoryLoaded(true);
+
+        if (formattedMessages.length > 0) {
+          toast.success(`Loaded ${data.chats.length} previous conversations`);
+        }
+      } else {
+        const errorData = await response.text();
+        console.error('❌ Chat history request failed:', response.status, errorData);
+        toast.error('Failed to load chat history');
       }
     } catch (error) {
-      console.error('Load chat history error:', error);
+      console.error('❌ Load chat history error:', error);
+      toast.error('Error loading chat history');
     }
   };
 

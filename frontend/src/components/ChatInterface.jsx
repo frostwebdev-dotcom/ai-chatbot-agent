@@ -208,6 +208,13 @@ const ChatInterface = () => {
             </div>
             <div className="flex space-x-2">
               <button
+                onClick={loadChatHistory}
+                className="flex items-center space-x-1 px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors text-sm"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Load History</span>
+              </button>
+              <button
                 onClick={clearMessages}
                 className="flex items-center space-x-1 px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors text-sm"
               >
