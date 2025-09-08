@@ -54,29 +54,61 @@ const handleChatMessage = async ({ userId, message, language, isVoiceMessage = f
     const userDoc = await db.collection('users').doc(userId).get();
     const userProfile = userDoc.exists ? userDoc.data() : {};
 
-    // Check for escalation keywords
-    const needsEscalation = ESCALATION_KEYWORDS.some(keyword => 
+    // Check for escalation keywords or negative sentiment
+    const hasEscalationKeywords = ESCALATION_KEYWORDS.some(keyword =>
       message.toLowerCase().includes(keyword.toLowerCase())
-    ) || sentiment === 'negative';
+    );
+    const hasNegativeSentiment = sentiment === 'negative';
+    const needsEscalation = hasEscalationKeywords || hasNegativeSentiment;
+
+    console.log('🔍 Escalation Check:', {
+      message: message.substring(0, 100),
+      hasEscalationKeywords,
+      hasNegativeSentiment,
+      needsEscalation,
+      sentiment,
+      userId
+    });
 
     let botResponse;
     let escalated = false;
 
-    if (needsEscalation && sentiment === 'negative') {
+    if (needsEscalation) {
       // Escalate to human
       escalated = true;
-      botResponse = language === 'es' 
-        ? 'Entiendo tu frustración. Te estoy conectando con un agente humano que podrá ayudarte mejor. Por favor, espera un momento.'
-        : 'I understand your frustration. I\'m connecting you with a human agent who can better assist you. Please wait a moment.';
-      
+      console.log('🚨 ESCALATING TO HUMAN:', { userId, message: message.substring(0, 50) });
+
+      botResponse = language === 'es'
+        ? 'Entiendo tu situación. Te estoy conectando con un agente humano que podrá ayudarte mejor. Por favor, espera un momento.'
+        : 'I understand your situation. I\'m connecting you with a human agent who can better assist you. Please wait a moment.';
+
       // Send escalation email
-      await sendEscalationEmail({
-        userId,
-        message,
-        sentiment,
-        userProfile,
-        timestamp: new Date().toISOString()
-      });
+      try {
+        await sendEscalationEmail({
+          userId,
+          message,
+          sentiment,
+          userProfile,
+          timestamp: new Date().toISOString()
+        });
+        console.log('✅ Escalation email sent');
+      } catch (emailError) {
+        console.error('❌ Escalation email failed:', emailError.message);
+      }
+
+      // Send Slack escalation notification
+      try {
+        const { sendSlackEscalationNotification } = require('../integrations/slack');
+        const escalationId = await sendSlackEscalationNotification(
+          null, // channelId not needed
+          userId,
+          message,
+          'web' // userChannel
+        );
+        console.log('✅ Slack escalation sent:', escalationId);
+      } catch (slackError) {
+        console.error('❌ Slack escalation failed:', slackError.message);
+      }
     } else {
       // Generate AI response
       botResponse = await generateResponse(message, {

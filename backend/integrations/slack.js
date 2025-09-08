@@ -717,6 +717,82 @@ async function findTestChannel() {
   }
 }
 
+// Debug endpoint to test Slack connection
+router.get('/test', async (req, res) => {
+  if (!isSlackEnabled) {
+    return res.json({
+      success: false,
+      error: 'Slack integration not enabled',
+      config: {
+        SLACK_BOT_TOKEN: !!process.env.SLACK_BOT_TOKEN,
+        SLACK_SIGNING_SECRET: !!process.env.SLACK_SIGNING_SECRET,
+        SLACK_BOT_USER_ID: !!process.env.SLACK_BOT_USER_ID,
+        SLACK_ESCALATION_CHANNEL: process.env.SLACK_ESCALATION_CHANNEL || 'not set'
+      }
+    });
+  }
+
+  try {
+    // Test Slack API connection
+    const authTest = await slack.auth.test();
+
+    // Test sending message to escalation channel
+    const testChannel = process.env.SLACK_ESCALATION_CHANNEL || 'escalations';
+    const testMessage = await slack.chat.postMessage({
+      channel: testChannel,
+      text: '🧪 Test message from AI Chatbot - Escalation system is working!',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '🧪 *Test Message*\n\nThis is a test message to verify the escalation system is working correctly.'
+          }
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `Sent at ${new Date().toLocaleString()}`
+            }
+          ]
+        }
+      ]
+    });
+
+    res.json({
+      success: true,
+      slack_auth: {
+        user: authTest.user,
+        team: authTest.team,
+        user_id: authTest.user_id
+      },
+      test_message: {
+        channel: testMessage.channel,
+        timestamp: testMessage.ts,
+        message: 'Test message sent successfully'
+      },
+      config: {
+        escalation_channel: testChannel,
+        bot_enabled: true
+      }
+    });
+
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      config: {
+        SLACK_BOT_TOKEN: !!process.env.SLACK_BOT_TOKEN,
+        SLACK_SIGNING_SECRET: !!process.env.SLACK_SIGNING_SECRET,
+        SLACK_BOT_USER_ID: !!process.env.SLACK_BOT_USER_ID,
+        SLACK_ESCALATION_CHANNEL: process.env.SLACK_ESCALATION_CHANNEL || 'not set'
+      }
+    });
+  }
+});
+
 // Mount the events adapter (only if Slack is enabled)
 if (slackEvents) {
   router.use('/events', slackEvents.expressMiddleware());
