@@ -39,6 +39,7 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For Slack form data
 
 // Serve static files from frontend build (for production)
 if (process.env.NODE_ENV === 'production') {

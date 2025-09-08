@@ -886,12 +886,55 @@ router.get('/test', async (req, res) => {
   }
 });
 
-// Mount the events adapter (only if Slack is enabled)
+// Test endpoint for events URL
+router.get('/events', (req, res) => {
+  res.status(200).json({
+    message: 'Slack Events endpoint is working',
+    timestamp: new Date().toISOString(),
+    slack_enabled: isSlackEnabled
+  });
+});
+
+// Custom events handler to handle challenge verification
+router.post('/events', (req, res) => {
+  if (!isSlackEnabled) {
+    return res.status(503).json({ error: 'Slack integration not configured' });
+  }
+
+  console.log('📨 Slack events request received');
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+
+  // Handle URL verification challenge
+  if (req.body && req.body.type === 'url_verification') {
+    console.log('🔐 Handling Slack URL verification challenge');
+    console.log('Challenge:', req.body.challenge);
+    return res.status(200).send(req.body.challenge);
+  }
+
+  // Handle actual events
+  if (req.body && req.body.type === 'event_callback') {
+    console.log('📩 Handling Slack event:', req.body.event.type);
+
+    // Use the Slack Events API adapter for actual events
+    if (slackEvents) {
+      // Forward to the events adapter
+      slackEvents.expressMiddleware()(req, res);
+    } else {
+      res.status(200).send('OK');
+    }
+    return;
+  }
+
+  // Default response
+  res.status(200).send('OK');
+});
+
+// Also keep the original events adapter mount for compatibility
 if (slackEvents) {
-  router.use('/events', slackEvents.expressMiddleware());
-} else {
-  router.use('/events', (req, res) => {
-    res.status(503).json({ error: 'Slack integration not configured' });
+  // Handle events through the adapter (this will be used after challenge verification)
+  slackEvents.on('error', (error) => {
+    console.error('❌ Slack Events API error:', error);
   });
 }
 
